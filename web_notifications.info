@@ -1,0 +1,6 @@
+name = Web Notifications
+description = A module that send push notifications to subscribers
+core = 7.x
+configure = admin/config/services/web_notifications
+dependencies[] = flag (3.x)
+scripts[] = scripts/app.js

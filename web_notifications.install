@@ -1,0 +1,57 @@
+<?php
+function web_notifications_schema() {
+  $schema['web_notifications_endpoints'] = array(
+      'description' => 'The base table for web_notificationss.',
+      'fields' => array(
+        'id' => array(
+          'description' => 'User subscription ID',
+          'type' => 'serial',
+          'unsigned' => TRUE,
+          'not null' => TRUE),
+        'endpoint' => array(
+          'description' => 'Subscriber Endpoint',
+          'type' => 'varchar',
+          'length' => 255,
+          'not null' => TRUE,
+          'default' => ''),
+        'token' => array(
+          'description' => 'Subscriber Token',
+          'type' => 'varchar',
+          'length' => 255,
+          'not null' => TRUE,
+          'default' => ''),
+        'public_key' => array(
+          'description' => 'Subscriber public_key',
+          'type' => 'varchar',
+          'length' => 255,
+          'not null' => TRUE,
+          'default' => ''),
+        ),
+      'primary key' => array('id'),
+      );
+      $schema['web_notifications_users'] = array(
+  'description' => 'Users and their Endpoints',
+  'fields' => array(
+    'uid' => array(
+      'description' => 'User ID',
+      'type' => 'int',
+      'unsigned' => TRUE,
+      'not null' => TRUE,
+    ),
+    'endpoint_id' => array(
+      'description' => 'Endpoint ID',
+      'type' => 'int',
+      'unsigned' => TRUE,
+      'not null' => TRUE,
+    ),
+  ),
+  'primary key' => array('uid'),
+  'unique keys' => array(
+    'endpoint_id' => array('endpoint_id'),
+    'uid' => array('uid')
+  ),
+);
+
+
+  return $schema;
+}
