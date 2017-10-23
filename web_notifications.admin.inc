@@ -1,39 +1,71 @@
 <?php
 
-require  'vendor/autoload.php';
-use Minishlink\WebPush\WebPush;
+/**
+* Form callback: Web Notifications Configuration
+*
+* @see web_notifications_menu()
+*/
+function web_notifications_settings_form($form, &$form_state) {
+  $form['web_notifications_public_key'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Push Notification Public Key'),
+    '#default_value' => variable_get('web_notifications_public_key', ''),
+    '#size' => 90,
+    '#maxlength' => 90,
+    '#description' => t('Push Notification Public Key (max. 90 characters)'),
+    '#required' => TRUE,
+  );
+
+  $form['web_notifications_private_key'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Push Notification Private Key'),
+    '#default_value' => variable_get('web_notifications_private_key', ''),
+    '#size' => 50,
+    '#maxlength' => 50,
+    '#description' => t('Push Notification Private Key (max. 50 characters)'),
+    '#required' => TRUE,
+  );
+
+  $form['web_notifications_subject'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Push Notification Subject'),
+    '#default_value' => variable_get('web_notifications_subject', ''),
+    '#size' => 50,
+    '#maxlength' => 50,
+    '#description' => t('Contact URI for the application server as either a "mailto:" or an "https:" address'),
+    '#required' => TRUE,
+  );
+
+  $form['web_notifications_query_selector'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Button Selector'),
+    '#default_value' => variable_get('web_notifications_query_selector', ''),
+    '#size' => 50,
+    '#maxlength' => 50,
+    '#description' => t('Button ID used for subscription (without #)'),
+    '#required' => TRUE,
+  );
+  $form['web_notifications_base_url'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Base URL'),
+    '#default_value' => variable_get('web_notifications_base_url', 'web_notifications'),
+    '#size' => 50,
+    '#maxlength' => 50,
+    '#description' => t('URL Used to send subscriptions'),
+    '#required' => TRUE,
+  );
+
+
+  return system_settings_form($form);
+}
+
 
 /**
-* Page callback: Web Notifications sending form
+* Form callback: Web Notifications sending form
 *
 * @see web_notifications_menu()
 */
 function web_notifications_sending_form($form, &$form_state) {
-
-  // Build the sortable table header.
-// $header = array(
-//  'endpoint' => t('Endpoint'),
-//  'token' => t('Token'),
-//  'public_key' => t('Public Key'),
-// );
-
-// $query = db_select('web_notifications','web')->extend('pagerDefault');
-// $query
-//     ->fields('web', array('endpoint', 'token', 'public_key'))
-//     ->limit(25);
-//     $results = $query->execute();
-//
-//     foreach ($results as $result ) {
-//
-//     $rows = array();
-//     $rows[]= array(
-//       'endpoint' => $result->endpoint,
-//       'token' => $result->token,
-//       'public_key' =>$result->public_key,
-//       '#attributes' => array('class'=> array('subscriptions-row')),
-//     );
-//     }
-
   $form['web_notifications_title'] = array(
     '#type' => 'textfield',
     '#title' => t('Title'),
@@ -64,7 +96,6 @@ function web_notifications_sending_form($form, &$form_state) {
     '#required' => false,
   );
 
-
   $form['web_notifications_body'] = array(
     '#type' => 'textarea',
     '#title' => t('body'),
@@ -75,18 +106,6 @@ function web_notifications_sending_form($form, &$form_state) {
     '#required' => TRUE,
   );
 
-  // $form['web_notifications_table'] = array(
-  //   '#type' => 'tableselect',
-  //   '#header' => $header,
-  //   '#options' => $rows,
-  //   '#empty' => t('No subscriptions Found'),
-  //   '#attributes' => array('class' => array('subscriptions')),
-  // );
-  //
-  // $form['pager'] = array(
-  //   '#markup' => theme('pager')
-  // );
-
   $form['submit'] = array(
     '#type' => 'submit',
     '#value' => t('Submit'),
@@ -96,43 +115,13 @@ function web_notifications_sending_form($form, &$form_state) {
 }
 
 function web_notifications_sending_form_submit($form,$form_state){
-      global $user;
-      $user_id = $user->uid;
-      dpm ($user_id);
+  global $user;
+  $user_id = $user->uid;
 
   $payload = $form_state['values']['web_notifications_title']  . '<br>';
   $payload .= $form_state['values']['web_notifications_body']  . '<br>';
   $payload .= $form_state['values']['web_notifications_icon_url']  . '<br>';
   $payload .= $form_state['values']['web_notifications_url']  . '<br>';
 
-  $query = db_select('web_notifications_endpoints', 'v');
-  $query->fields('v',array('endpoint','token','public_key'));
-  $result = $query->execute();
-  while($subscription = $result->fetchAssoc()) {
-    $auth = array(
-      'VAPID' => array(
-        'subject' => 'https://enty.tv/',
-        'publicKey' => 'BGH_Q1P5l5jqs7sFmww0drnW-v9xJlTY5UYGrb1zaAhAqbe278saTwZCXR6KYG9mrI_-6TISV4dkv0AICX2Ojas',
-        'privateKey' => '9vtMiDZij0G2dgosVLPPBD3E1mrPHyVcaiq6GN155a0',
-      ),
-    );
-$webPush = new WebPush($auth);
-$res = $webPush->sendNotification(
-  $subscription["endpoint"],
-  $payload,
-  $subscription["public_key"],
-  $subscription["token"]
-);
-    }
-$webPush->flush();
-
-
- //  } else {
- //    echo "No Endpoints found";
- //  }
- //
- //  $conn->close();
- //  //Redirect
- //  header('Location: ' . $_SERVER['HTTP_REFERER']);
-
+  web_notifications_send_message('0',$payload);
 }

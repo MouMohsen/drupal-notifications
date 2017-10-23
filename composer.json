@@ -1,14 +1,7 @@
 {
-    "name": "minishlink/web-push-php-example",
-    "description": "An example for sending Web Push notifications, using web-push-php",
-    "type": "project",
-    "license": "MIT",
-    "authors": [
-        {
-            "name": "Louis Lagrange",
-            "email": "lagrange.louis@gmail.com"
-        }
-    ],
+    "name": "Web Notifications",
+    "description": "Drupal module based on web-push-php google library that sends push notifications to browsers",
+    "type": "module",
     "require": {
         "minishlink/web-push": "^1.4",
         "jmathai/php-multi-curl": "dev-master"
