@@ -1,14 +1,12 @@
 <?php
 
-/**
-* @file
-* A block module that displays recent blog and forum posts.
-*/
+require  'vendor/autoload.php';
+use Minishlink\WebPush\WebPush;
 
 /**
 * Implements hook_help().
 */
-  function web_notifications_help($path, $arg) {
+function web_notifications_help($path, $arg) {
   switch ($path) {
     case "admin/help#web_notifications":
       return t("Sends push notifications to subscribers");
@@ -16,261 +14,187 @@
     }
   }
 
-  function web_notifications_flag_flag($flag, $entity_id, $account, $flagging) {
+/**
+* Implements hook_menu().
+*/
+function web_notifications_menu() {
+  $items = array();
 
-    if ($flag->name == 'section_subscribe'){
-      $result = db_insert('web_notifications')
+  $items['admin/config/services/web_notifications'] = array(
+    'title' => 'Web Notifications',
+    'description' => 'Configuration for Web Notifications module',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('web_notifications_settings_form'),
+    'access arguments' => array('administer web notifications'),
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'web_notifications.admin.inc',
+  );
+
+  $items['admin/content/web_notifications'] = array(
+    'title' => 'Web Notifications',
+    'description' => 'Send and manage web notifications',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('web_notifications_sending_form'),
+    'access arguments' => array('administer web notifications'),
+    'file' => 'web_notifications.admin.inc',
+  );
+  $items['subscription_url'] = array(
+    'page callback' => 'subscription_function',
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+/**
+* Implements hook_permission().
+*/
+function web_notifications_permission() {
+  return array(
+    'administer web notifications' => array(
+      'title' => t('Administer Web Notifications'),
+    ),
+    'access web notifications' => array(
+      'title' => t('Access Web Notifications'),
+      )
+    );
+  }
+
+  /**
+  * callback: send web notifications
+  *@param '0': Bulk Send, '1': individual
+  *@param String $payload
+  *@param Array $account: $uid
+  */
+  function web_notifications_send_message($target,$payload,$account=NULL){
+    switch ($target) {
+      case '0':
+      $query = db_select('web_notifications_endpoints', 'v');
+      $query->fields('v',array('endpoint','token','public_key'));
+      $result = $query->execute();
+      while($subscription = $result->fetchAssoc()) {
+      $auth = array(
+        'VAPID' => array(
+          'subject' => 'https://enty.tv/',
+          'publicKey' => variable_get("web_notifications_public_key", ""),
+          'privateKey' => variable_get("web_notifications_private_key", ""),
+        ),
+      );
+      $webPush = new WebPush($auth);
+      $res = $webPush->sendNotification(
+      $subscription["endpoint"],
+      $payload,
+      $subscription["public_key"],
+      $subscription["token"]
+      );
+      }
+      dpm($payload);
+      $webPush->flush();
+      break;
+      case '1':
+      //@TODO Send individual messages
+      break;
+    }
+  }
+
+/**
+* Function that gets called from JQuery asynchronously.
+*/
+function subscription_function() {
+  $subscription = json_decode(file_get_contents('php://input'), true);
+
+  $endpoint = (string)$subscription['endpoint'];
+  $token = (string) $subscription['token'];
+  $key = (string) $subscription['key'];
+  $uid = $subscription['uid'];
+
+  $method = $_SERVER['REQUEST_METHOD'];
+
+  switch ($method) {
+    case 'POST':
+    // create a new subscription entry in database (endpoint is unique)
+    $result = db_insert('web_notifications_endpoints')
+    ->fields(array(
+      'endpoint' => $endpoint,
+      'token' => $token,
+      'public_key' => $key
+    ));
+    $endpoint_id = $result->execute();
+
+    if ($uid != 0){
+      $result = db_insert('web_notifications_users')
       ->fields(array(
-        'flagging_id' => $flagging->flagging_id,
-        'status' => 0
+        'uid' => $uid,
+        'endpoint_id' => $endpoint_id
       ))
       ->execute();
     }
-  }
 
-  function web_notifications_flag_unflag($flag, $entity_id, $account, $flagging) {
-    if ($flag->name == 'section_subscribe'){
-      $result = db_delete('web_notifications')
-      ->condition('flagging_id', $flagging->flagging_id)
+    break;
+    case 'PUT':
+
+    $result = db_update('web_notifications_endpoints')
+    ->condition('endpoint', $endpoint)
+    ->fields(array('token' => $token))
+    ->fields(array('public_key' =>$key))
+    ->execute();
+
+    break;
+    case 'DELETE':
+    // delete the subscription corresponding to the endpoint
+
+    $result = db_delete('web_notifications_endpoints')
+    ->condition('endpoint', $endpoint);
+    $endpoint_id = $result->execute();
+    if($uid != 0 ){
+      $result = db_delete('web_notifications_users')
+      ->condition('endpoint_id', $endpoint_id)
       ->execute();
     }
+    break;
+    default:
+    echo "Error: method not handled";
+  }
+}
+
+// For testing purposes
+
+/**
+* Implements hook_block_info().
+*/
+function web_notifications_block_info() {
+  $blocks['web_notifications'] = array(
+    // The name that will appear in the block list.
+    'info' => t('Web Notifications'),
+    // Default setting.
+    'cache' => DRUPAL_CACHE_PER_ROLE,
+  );
+  return $blocks;
+}
+
+/**
+* Implements hook_block_view().
+*/
+function web_notifications_block_view($delta = '') {
+  switch ($delta) {
+    case 'web_notifications':
+      $block['subject'] = t('Web Notifications');
+      $block['content'] = '<button id="'.variable_get("web_notifications_query_selector", "push-subscription-button").'" type="button">Notifications Subscribe</button>';
+    }
+    return $block;
   }
 
   /**
-  * Implement default flags.
+  * Export configuration varibles
   */
-  function web_notifications_flag_default_flags() {
-    $flags = array();
-    // Exported flag: "Section Subscribe".
-    $flags['notifications_subscribe'] = array (
-      'entity_type' => 'node',
-      'title' => 'Notifications Subscribe',
-      'global' => '0',
-      'types' =>
-      array (
-      ),
-      'flag_short' => 'Subscribe Notifications',
-      'flag_long' => 'Subscribe to this notifications',
-      'flag_message' => 'Thank you for subscribing',
-      'unflag_short' => 'Unsubscribe Notifications',
-      'unflag_long' => 'Unsubscribe from notifications',
-      'unflag_message' => 'You are unsubscribed',
-      'unflag_denied_text' => '',
-      'link_type' => 'toggle',
-      'weight' => 0,
-      'show_in_links' =>
-      array (
-        'full' => 'full',
-        'teaser' => 0,
-        'rss' => 0,
-        'search_index' => 0,
-        'search_result' => 0,
-      ),
-      'show_as_field' => 1,
-      'show_on_form' => 0,
-      'access_author' => '',
-      'show_contextual_link' => 0,
-      'i18n' => 0,
-      'api_version' => 3,
-    );
-    return $flags;
-  }
-
-  /**
-  * Implements hook_permission().
-  */
-  function web_notifications_permission() {
-    return array(
-      'administer web notifications' => array(
-        'title' => t('Administer Web Notifications'),
-      ),
-      'access web notifications' => array(
-        'title' => t('Access Web Notifications'),
-        )
-      );
-    }
-
-    /**
-    * Implements hook_menu().
-    */
-    function web_notifications_menu() {
-      $items = array();
-
-      $items['admin/config/services/web_notifications'] = array(
-        'title' => 'Web Notifications',
-        'description' => 'Configuration for Web Notifications module',
-        'page callback' => 'drupal_get_form',
-        'page arguments' => array('web_notifications_form'),
-        'access arguments' => array('administer web notifications'),
-        'type' => MENU_NORMAL_ITEM,
-      );
-
-      $items['admin/content/web_notifications'] = array(
-        'title' => 'Web Notifications',
-        'description' => 'Send and manage web notifications',
-        'page callback' => 'drupal_get_form',
-        'page arguments' => array('web_notifications_sending_form'),
-        'access arguments' => array('administer web notifications'),
-        'file' => 'web_notifications.admin.inc',
-      );
-      $items['subscription_url'] = array(
-        'page callback' => 'subscription_function',
-        'access arguments' => array('access content'),
-        'type' => MENU_CALLBACK,
-      );
-
-      return $items;
-    }
-
-    /**
-    * Function that gets called from JQuery asynchronously.
-    */
-    function subscription_function() {
-      $subscription = json_decode(file_get_contents('php://input'), true);
-
-      $endpoint = (string)$subscription['endpoint'];
-      $token = (string) $subscription['token'];
-      $key = (string) $subscription['key'];
-      $uid = $subscription['uid'];
-
-      $method = $_SERVER['REQUEST_METHOD'];
-
-      switch ($method) {
-        case 'POST':
-        // create a new subscription entry in database (endpoint is unique)
-        $result = db_insert('web_notifications_endpoints')
-        ->fields(array(
-          'endpoint' => $endpoint,
-          'token' => $token,
-          'public_key' => $key
-        ));
-        $endpoint_id = $result->execute();
-
-        if ($uid != 0){
-          $result = db_insert('web_notifications_users')
-          ->fields(array(
-            'uid' => $uid,
-            'endpoint_id' => $endpoint_id
-          ))
-          ->execute();
-        }
-
-        break;
-        case 'PUT':
-
-        $result = db_update('web_notifications_endpoints')
-        ->condition('endpoint', $endpoint)
-        ->fields(array('token' => $token))
-        ->fields(array('public_key' =>$key))
-        ->execute();
-
-        break;
-        case 'DELETE':
-        // delete the subscription corresponding to the endpoint
-
-        $result = db_delete('web_notifications_endpoints')
-        ->condition('endpoint', $endpoint);
-        $endpoint_id = $result->execute();
-        if($uid != 0 ){
-          $result = db_delete('web_notifications_users')
-          ->condition('endpoint_id', $endpoint_id)
-          ->execute();
-        }
-        break;
-        default:
-        echo "Error: method not handled";
-      }
-    }
-
-    /**
-    * Page callback: Web Notifications settings
-    *
-    * @see web_notifications_menu()
-    */
-    function web_notifications_form($form, &$form_state) {
-      $form['web_notifications_public_key'] = array(
-        '#type' => 'textfield',
-        '#title' => t('Push Notification Public Key'),
-        '#default_value' => variable_get('web_notifications_public_key', ''),
-        '#size' => 90,
-        '#maxlength' => 90,
-        '#description' => t('Push Notification Public Key (max. 90 characters)'),
-        '#required' => TRUE,
-      );
-
-      $form['web_notifications_private_key'] = array(
-        '#type' => 'textfield',
-        '#title' => t('Push Notification Private Key'),
-        '#default_value' => variable_get('web_notifications_private_key', ''),
-        '#size' => 50,
-        '#maxlength' => 50,
-        '#description' => t('Push Notification Private Key (max. 50 characters)'),
-        '#required' => TRUE,
-      );
-      $form['web_notifications_query_selector'] = array(
-        '#type' => 'textfield',
-        '#title' => t('Button Selector'),
-        '#default_value' => variable_get('web_notifications_query_selector', ''),
-        '#size' => 50,
-        '#maxlength' => 50,
-        '#description' => t('Button ID used for subscription (without #)'),
-        '#required' => TRUE,
-      );
-      $form['web_notifications_base_url'] = array(
-        '#type' => 'textfield',
-        '#title' => t('Base URL'),
-        '#default_value' => variable_get('web_notifications_base_url', 'web_notifications'),
-        '#size' => 50,
-        '#maxlength' => 50,
-        '#description' => t('URL Used to send subscriptions'),
-        '#required' => TRUE,
-      );
-
-
-      return system_settings_form($form);
-    }
-
-
-
-    /**
-    * Implements hook_block_info().
-    */
-    function web_notifications_block_info() {
-      $blocks['web_notifications'] = array(
-        // The name that will appear in the block list.
-        'info' => t('Web Notifications'),
-        // Default setting.
-        'cache' => DRUPAL_CACHE_PER_ROLE,
-      );
-      return $blocks;
-    }
-
-    /**
-    * Implements hook_block_view().
-    */
-    function web_notifications_block_view($delta = '') {
-      switch ($delta) {
-        case 'web_notifications':
-          $block['subject'] = t('Web Notifications');
-          $block['content'] = '<button id="'.variable_get("web_notifications_query_selector", "push-subscription-button").'" type="button">Notifications Subscribe</button>';
-        }
-        return $block;
-      }
-
-      /**
-      * Export configuration varibles
-      */
-      $public_key = variable_get("web_notifications_public_key", "");
-      $query_selector = variable_get("web_notifications_query_selector", "push-subscription-button");
-      global $user;
-      $user_id= $user->uid;
-
-      drupal_add_js(array('web_notifications' => array(
-        'public_key' => $public_key,
-        'query_selector' => $query_selector,
-        'uid' => $user_id,
-
-        // 'base_path' => $base_url,
-      )
-    ), array('type' => 'setting'));
-    // drupal_add_js(array('web_notifications' => array('query_selector' => $query_selector)), array('type' => 'setting'));
+  $public_key = variable_get("web_notifications_public_key", "");
+  $query_selector = variable_get("web_notifications_query_selector", "push-subscription-button");
+  global $user;
+  $user_id= $user->uid;
+  drupal_add_js(array('web_notifications' => array(
+    'public_key' => $public_key,
+    'query_selector' => $query_selector,
+    'uid' => $user_id,
+  )
+), array('type' => 'setting'));
